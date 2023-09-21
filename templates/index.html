@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Circle Game</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <style>
+        body {
+            background-color: #000;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        #pentagon_text {
+            color: #fff;
+        }
+
+        #score1,
+        #score2 {
+            font-size: 30px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            /* width: 10px; */
+        }
+
+        .top-left-element {
+            padding: 3vw 10vw;
+            color: #007b00;
+            /* color: #fff; */
+            font-weight: 700;
+            /* border: 1px white solid; */
+        }
+
+        .center-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex-grow: 1;
+            /* border: 2px white solid; */
+        }
+
+        .top-right-element {
+            padding: 3vw 10vw;
+            color: #0000fc;
+            /* color: #fff; */
+            font-weight: 700;
+            /* border: 1px white solid; */
+        }
+
+        
+    </style>
+</head>
+
+<body>
+    <div id="score1" class="top-left-element"></div>
+    <div class="center-container">
+        <canvas width="500" height="500" style="background: #000" id="canvas"></canvas>
+        <div id="pentagon_text"></div>
+    </div>
+    <div id="score2" class="top-right-element"></div>
+
+
+    <script>
+        const canvas = document.querySelector("#canvas");
+        const pentagon_text = document.querySelector("#pentagon_text")
+        const score1 = document.querySelector("#score1")
+        const score2 = document.querySelector("#score2")
+        const ctx = canvas.getContext("2d");
+        const WINDOW_SIZE = [500, 500];
+        const CENTER = [250, 250];
+        const RADIUS = 200;
+
+        let chordStart = null; // To store the starting point of the chord
+        let chordLines = []; // To store the endpoints of finished chord lines
+        let intersectionPoints = []; // To store intersection points
+        let solution = []; // To store the solution
+        let pentagon_found = false;
+        let playerTurn = 1; // Stores who's turn it is
+        let player1_score = 0
+        let player2_score = 0
+
+        let mouse_x = 0;
+        let mouse_y = 0;
+
+        // Utilities
+
+        const switchPlayerTurn = () => {
+            if (playerTurn === 1) {
+                playerTurn = 2
+            } else {
+                playerTurn = 1
+            }
+        }
+
+        const incrementPlayerScore = (player, amount) => {
+            if (player === 1) {
+                player1_score += amount
+            } else {
+                player2_score += amount
+            }
+        }
+
+        const drawCircle = (coordinates, color, radius = 10) => {
+            let x, y;
+            [x, y] = coordinates;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.closePath();
+        };
+
+        const drawLine = (start, end, color = "black", lineWidth = 1) => {
+            ctx.beginPath();
+            ctx.moveTo(start[0], start[1]);
+            ctx.lineTo(end[0], end[1]);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+            ctx.stroke();
+        }
+
+        const drawText = (text, position, color = 'white', font = '30px Arial') => {
+            ctx.font = font
+            ctx.fillStyle = color
+            ctx.fillText(text, position[0], position[1])
+        }
+
+        const drawPlayerScores = () => {
+            function convertToFormattedString(number) {
+                if (typeof number !== 'number' || number < 0 || number > 99) {
+                    return null; // Invalid input
+                }
+                
+                return number < 10 ? `0${number}` : `${number}`;
+            }
+
+            // Draw player scores
+            score1.innerText = convertToFormattedString(player1_score)
+            score2.innerText = convertToFormattedString(player2_score)
+        }
+
+        // Draw canvas
+
+        function redrawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+
+            // Redraw the circle
+            ctx.beginPath();
+            ctx.arc(250, 250, RADIUS, 0, Math.PI * 2);
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.closePath();
+
+            // Draw radius line
+            const x_component = mouse_x - CENTER[0];
+            const y_component = mouse_y - CENTER[1];
+            const angle = Math.atan2(y_component, x_component);
+
+            const end_x = CENTER[0] + RADIUS * Math.cos(angle);
+            const end_y = CENTER[1] + RADIUS * Math.sin(angle);
+
+            // Draw stored chord lines
+            for (const chord of chordLines) {
+                if (chordLines.indexOf(chord) % 2 === 0) {
+                    drawLine(chord[0], chord[1], "green", 3);
+                } else {
+                    drawLine(chord[0], chord[1], "blue", 3);
+                }
+                if (!pentagon_found) {
+                    drawCircle(chord[0], "white", 4);
+                    drawCircle(chord[1], "white", 4);
+                }
+            }
+
+            if (!pentagon_found) {
+                // Draw radius line
+                drawLine(CENTER, [end_x, end_y], "red", 2);
+
+                // Draw intersection points
+                for (const point of intersectionPoints) {
+                    drawCircle(point, "white", 4);
+                }
+            } else {
+                // Solution found, game over
+                for (const point of solution) {
+                    drawCircle(point, "white", 4)
+                }
+                pentagon_text.innerText = "Pentagon Detected"
+            }
+
+            // Draw temporary chord if start point is set
+            if (chordStart) {
+                if (playerTurn === 1) {
+                    drawLine(chordStart, [end_x, end_y], "green", 3);
+                } else {
+                    drawLine(chordStart, [end_x, end_y], "blue", 3);
+                }
+            }
+
+            // Draw player scores
+            drawPlayerScores()
+
+        }
+
+        async function post(url, value) {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ value: value }),
+            });
+            return response.json()
+        }
+
+        const run = async (allLines) => {
+            const x = await post("/process", {
+                "lines": allLines,
+                "current_intersections": intersectionPoints
+            });
+            return x.result;
+        };
+
+        canvas.addEventListener("click", async (event) => {
+            if (!pentagon_found) {
+                if (!chordStart) {
+                    const x = event.clientX - canvas.getBoundingClientRect().left;
+                    const y = event.clientY - canvas.getBoundingClientRect().top;
+                    const x_component = x - CENTER[0];
+                    const y_component = y - CENTER[1];
+                    const angle = Math.atan2(y_component, x_component);
+                    chordStart = [
+                        CENTER[0] + RADIUS * Math.cos(angle),
+                        CENTER[1] + RADIUS * Math.sin(angle),
+                    ];
+                } else {
+                    const x = event.clientX - canvas.getBoundingClientRect().left;
+                    const y = event.clientY - canvas.getBoundingClientRect().top;
+                    const x_component = x - CENTER[0];
+                    const y_component = y - CENTER[1];
+                    const angle = Math.atan2(y_component, x_component);
+                    const chordEnd = [
+                        CENTER[0] + RADIUS * Math.cos(angle),
+                        CENTER[1] + RADIUS * Math.sin(angle),
+                    ];
+                    chordLines.push([chordStart, chordEnd]);
+                    chordStart = null; // Reset chordStart
+
+                    // Run the python
+                    const game_data = await run(chordLines)
+
+                    let previousIntersectionPoints = intersectionPoints.map(x => x)
+                    intersectionPoints = game_data["intersections"].map(x => x)
+                    let newIntersections = previousIntersectionPoints.filter(x => !intersectionPoints.includes(x))
+                    console.log(newIntersections)
+
+                    if (game_data["pentagon_found"]) {
+                        pentagon_found = true
+                        solution = game_data["solution"]
+                    }
+                    intersectionPoints.forEach(element => {
+                        drawCircle(element, "white", 4)
+                    });
+
+                    incrementPlayerScore(playerTurn, game_data["score"] + 2)
+                    console.log(player1_score, player2_score)
+                    switchPlayerTurn()
+                }
+            }
+        });
+        
+        canvas.addEventListener("mousemove", (event) => {
+            mouse_x = event.clientX - canvas.getBoundingClientRect().left;
+            mouse_y = event.clientY - canvas.getBoundingClientRect().top;
+        });
+
+        document.body.addEventListener("keypress", (event) => {
+            if (event.key == "e") {
+                chordStart = null; // Reset chordStart
+            }
+        })
+
+        // Redraw canvas every 5 ms
+        setInterval(redrawCanvas, 5)
+
+    
+    </script>
+
+</body>
+
+</html>

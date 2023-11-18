@@ -2,3 +2,4 @@ __pycache__/
 stderr.log
 tmp/
 a2command
+.htaccess
